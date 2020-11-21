@@ -1,0 +1,639 @@
+#include <GL\freeglut.h>
+#include <FreeImage.h>
+#include <math.h>
+#include<vector>
+#include <stdlib.h>
+#pragma comment(lib, "freeimage.lib")
+using namespace std;
+GLuint terrainTexture;	
+float cameraX = 250, cameraZ = 680;
+float cameraY = 60;
+float cameraAngle = 0;
+GLfloat angleX, angleZ;
+GLfloat headingX = 0, headingZ = 0.1;
+GLfloat ambientLight[] = { 3.0f, 3.0f, 3.0f, 1.0f };
+GLfloat diffuseLight[] = { 6.5f, 6.5f, 6.5f, 1.0f };
+GLfloat lightPosition[] = { -20.0f, 20.0f, 30.0f, 1.0f };
+BYTE **heightMap;
+int mapWidth, mapHeight;
+int stepSize = 20;
+class Vertex { //
+public:
+	GLfloat x;
+	GLfloat y;
+	GLfloat z;
+	Vertex(GLfloat a,GLfloat b,GLfloat c)
+	{
+		x = a;
+		y = b;
+		z = c;
+	}
+	Vertex()
+	{
+		x = y = z = -1;
+	}
+};
+Vertex objMov(0,0,0);
+GLuint loadTextures(char *location) //
+{
+	GLuint texture;
+	FIBITMAP *image = FreeImage_Load(FreeImage_GetFileType(location, 0), location);
+	FIBITMAP *fImage = FreeImage_ConvertTo32Bits(image);
+	int width = FreeImage_GetWidth(fImage);
+	int height = FreeImage_GetHeight(fImage);
+ 
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+ 
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+ 
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, (void*)FreeImage_GetBits(fImage));
+ 
+	return texture;
+}
+enum {SKY_LEFT = 0, SKY_BACK, SKY_RIGHT,SKY_FRONT,SKY_TOP,SKY_BOTTOM};
+GLuint skybox[6];
+GLuint loadSky(char *location)
+{
+	GLuint num;
+	glGenTextures(1, &num);
+	FIBITMAP *image = FreeImage_Load(FreeImage_GetFileType(location, 0), location);
+	FIBITMAP *fImage = FreeImage_ConvertTo32Bits(image);
+	int width = FreeImage_GetWidth(fImage);
+	int height = FreeImage_GetHeight(fImage);
+	glBindTexture(GL_TEXTURE_2D, num);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, (void*)FreeImage_GetBits(fImage));
+	return num;
+ 
+}
+void initSkyBox()
+{
+	skybox[SKY_LEFT] = loadSky("D:\\left.bmp");
+	skybox[SKY_BACK] = loadSky("D:\\back.bmp");
+	skybox[SKY_RIGHT] = loadSky("D:\\right.bmp");
+	skybox[SKY_FRONT] = loadSky("D:\\front.bmp");
+	skybox[SKY_TOP] = loadSky("D:\\bottom.bmp");
+	skybox[SKY_BOTTOM] = loadSky("D:\\top.bmp");
+}
+void drawSkybox(float size)
+{
+	bool b1 = glIsEnabled(GL_TEXTURE_2D);   
+	glDisable(GL_LIGHTING); 
+	glDisable(GL_DEPTH_TEST); 
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, skybox[SKY_BACK]); 
+	glBegin(GL_QUADS);      
+ 
+	glTexCoord2f(0, 0);     
+	glVertex3f(size / 2, size / 2, size / 2); 
+	glTexCoord2f(1, 0); 
+	glVertex3f(-size / 2, size / 2, size / 2);
+	glTexCoord2f(1, 1);
+	glVertex3f(-size / 2, -size / 2, size / 2);
+	glTexCoord2f(0, 1);
+	glVertex3f(size / 2, -size / 2, size / 2);
+	glEnd();
+	glBindTexture(GL_TEXTURE_2D, skybox[SKY_LEFT]);
+	glBegin(GL_QUADS);
+	//left face
+	glTexCoord2f(0, 0);
+	glVertex3f(-size / 2, size / 2, size / 2);
+	glTexCoord2f(1, 0);
+	glVertex3f(-size / 2, size / 2, -size / 2);
+	glTexCoord2f(1, 1);
+	glVertex3f(-size / 2, -size / 2, -size / 2);
+	glTexCoord2f(0, 1);
+	glVertex3f(-size / 2, -size / 2, size / 2);
+	glEnd();
+	glBindTexture(GL_TEXTURE_2D, skybox[SKY_FRONT]);
+	glBegin(GL_QUADS);
+	//front face
+	glTexCoord2f(1, 0);
+	glVertex3f(size / 2, size / 2, -size / 2);
+	glTexCoord2f(0, 0);
+	glVertex3f(-size / 2, size / 2, -size / 2);
+	glTexCoord2f(0, 1);
+	glVertex3f(-size / 2, -size / 2, -size / 2);
+	glTexCoord2f(1, 1);
+	glVertex3f(size / 2, -size / 2, -size / 2);
+	glEnd();
+	glBindTexture(GL_TEXTURE_2D, skybox[SKY_RIGHT]);
+	glBegin(GL_QUADS);
+	//right face
+	glTexCoord2f(0, 0);
+	glVertex3f(size / 2, size / 2, -size / 2);
+	glTexCoord2f(1, 0);
+	glVertex3f(size / 2, size / 2, size / 2);
+	glTexCoord2f(1, 1);
+	glVertex3f(size / 2, -size / 2, size / 2);
+	glTexCoord2f(0, 1);
+	glVertex3f(size / 2, -size / 2, -size / 2);
+	glEnd();
+	glBindTexture(GL_TEXTURE_2D, skybox[SKY_TOP]);
+	glBegin(GL_QUADS);                      //top face
+	glTexCoord2f(1, 0);
+	glVertex3f(size / 2, size / 2, size / 2);
+	glTexCoord2f(0, 0);
+	glVertex3f(-size / 2, size / 2, size / 2);
+	glTexCoord2f(0, 1);
+	glVertex3f(-size / 2, size / 2, -size / 2);
+	glTexCoord2f(1, 1);
+	glVertex3f(size / 2, size / 2, -size / 2);
+	glEnd();
+	glBindTexture(GL_TEXTURE_2D, skybox[SKY_BOTTOM]);
+	glBegin(GL_QUADS);
+	//bottom face
+	glTexCoord2f(1, 1);
+	glVertex3f(size / 2, -size / 2, size / 2);
+	glTexCoord2f(0, 1);
+	glVertex3f(-size / 2, -size / 2, size / 2);
+	glTexCoord2f(0, 0);
+	glVertex3f(-size / 2, -size / 2, -size / 2);
+	glTexCoord2f(1, 0);
+	glVertex3f(size / 2, -size / 2, -size / 2);
+	glEnd();
+	glEnable(GL_LIGHTING); 
+	glEnable(GL_DEPTH_TEST);
+	if (!b1)
+		glDisable(GL_TEXTURE_2D);
+}
+void loadHeightMap( char location[] ) //
+{
+	FIBITMAP *hMap = FreeImage_Load( FreeImage_GetFileType(location,0), location);
+	FIBITMAP *greyMap = FreeImage_ConvertTo8Bits( hMap );
+	greyMap = FreeImage_ConvertToGreyscale( greyMap );
+ 
+	mapWidth = FreeImage_GetWidth( greyMap );
+	mapHeight = FreeImage_GetHeight( greyMap );
+ 
+	heightMap = new BYTE* [mapWidth];
+	for(int i = 0; i<mapWidth; i++)
+			heightMap[i] = new BYTE[mapHeight];
+ 
+	for(int y = 0; y<mapHeight; y++)
+	{
+		BYTE* scanLine = FreeImage_GetScanLine( greyMap, y );
+		for(int x = 0; x<mapWidth; x++)
+			heightMap[x][y] = scanLine[x];
+ 
+	}
+}
+struct face
+{
+	int type;	//1 = Triangle, 2 = Quad
+	int texLocation;
+	Vertex a, b, c, d;
+	Vertex an, bn, cn, dn;
+	Vertex at, bt, ct, dt;
+ 
+	face()
+	{
+		type = 1;
+		texLocation = 0;
+	}
+};
+ 
+struct Quad
+{
+	float angelX, angelY;
+	float x, y;
+ 
+	Quad()
+	{
+		angelX = 0;
+		angelY = 0;
+		x = 0;
+		y = 0;
+	}
+ 
+};
+Quad a, b;
+class Object3D
+{
+public:
+	vector<Vertex> vertices;
+	vector<Vertex> textures;
+	vector<Vertex> normals;
+ 
+	vector<face> faces;
+	vector<GLuint> tex;
+ 
+	void render()
+	{
+		for (int i = 0; i<faces.size(); i++)
+		{
+			glBindTexture(GL_TEXTURE_2D, tex[faces[i].texLocation]);
+			if (faces[i].type == 1)
+			{
+				glBegin(GL_TRIANGLES);
+ 
+				glTexCoord2d(faces[i].at.x, faces[i].at.y);
+				glNormal3f(faces[i].an.x, faces[i].an.y, faces[i].an.z);
+				glVertex3f(faces[i].a.x, faces[i].a.y, faces[i].a.z);
+ 
+				glTexCoord2d(faces[i].bt.x, faces[i].bt.y);
+				glNormal3f(faces[i].bn.x, faces[i].bn.y, faces[i].bn.z);
+				glVertex3f(faces[i].b.x, faces[i].b.y, faces[i].b.z);
+ 
+				glTexCoord2d(faces[i].ct.x, faces[i].ct.y);
+				glNormal3f(faces[i].cn.x, faces[i].cn.y, faces[i].cn.z);
+				glVertex3f(faces[i].c.x, faces[i].c.y, faces[i].c.z);
+ 
+				glEnd();
+			}
+ 
+			else if (faces[i].type == 2)
+			{
+				glBegin(GL_QUADS);
+ 
+				glTexCoord2d(faces[i].at.x, faces[i].at.y);
+				glNormal3f(faces[i].an.x, faces[i].an.y, faces[i].an.z);
+				glVertex3f(faces[i].a.x, faces[i].a.y, faces[i].a.z);
+ 
+				glTexCoord2d(faces[i].bt.x, faces[i].bt.y);
+				glNormal3f(faces[i].bn.x, faces[i].bn.y, faces[i].bn.z);
+				glVertex3f(faces[i].b.x, faces[i].b.y, faces[i].b.z);
+ 
+				glTexCoord2d(faces[i].ct.x, faces[i].ct.y);
+				glNormal3f(faces[i].cn.x, faces[i].cn.y, faces[i].cn.z);
+				glVertex3f(faces[i].c.x, faces[i].c.y, faces[i].c.z);
+ 
+				glTexCoord2d(faces[i].dt.x, faces[i].dt.y);
+				glNormal3f(faces[i].dn.x, faces[i].dn.y, faces[i].dn.z);
+				glVertex3f(faces[i].d.x, faces[i].d.y, faces[i].d.z);
+ 
+				glEnd();
+			}
+		}
+	}
+ 
+	bool loadObject(char* filename)
+	{
+		FILE *in = fopen(filename, "r");
+		if (!in)
+			return false;
+ 
+		char header[50];
+		int texLocation = -1;
+ 
+		while (fscanf(in, "%s", header) != EOF)
+		{
+			if (!strcmp(header, "v"))
+			{
+				Vertex pt;
+				fscanf(in, "%f%f%f", &pt.x, &pt.y, &pt.z);
+				vertices.push_back(pt);
+			}
+			if (!strcmp(header, "vt"))
+			{
+				Vertex pt;
+				fscanf(in, "%f%f%f", &pt.x, &pt.y, &pt.z);
+				textures.push_back(pt);
+			}
+			if (!strcmp(header, "vn"))
+			{
+				Vertex pt;
+				fscanf(in, "%f%f%f", &pt.x, &pt.y, &pt.z);
+				normals.push_back(pt);
+			}
+			if (!strcmp(header, "o"))
+			{
+				char name[30];
+				fscanf(in, "%s", name);
+				GLuint t = loadTextures(name);
+				tex.push_back(t);
+				texLocation++;
+ 
+			}
+			if (!strcmp(header, "f"))
+			{
+				face f;
+				int av = -1, bv = -1, cv = -1, dv = -1;
+				int at = -1, bt = -1, ct = -1, dt = -1;
+				int an = -1, bn = -1, cn = -1, dn = -1;
+ 
+				char fLine[100];
+				fgets(fLine, 99, in);
+				sscanf(fLine, " %d/%d/%d %d/%d/%d %d/%d/%d %d/%d/%d", &av, &at, &an, &bv, &bt,
+					&bn, &cv, &ct, &cn, &dv, &dt, &dn);
+				if (bv == -1)
+				{
+					sscanf(fLine, " %d/%d %d/%d %d/%d %d/%d", &av, &at, &bv, &bt,
+						&cv, &ct, &dv, &dt);
+					an = bn = cn = dn = 0;
+ 
+				}
+				f.a = vertices[av - 1];
+				f.b = vertices[bv - 1];
+				f.c = vertices[cv - 1];
+ 
+				f.at = textures[at - 1];
+				f.bt = textures[bt - 1];
+				f.ct = textures[ct - 1];
+				if (normals.size() > 0)
+				{
+					f.an = normals[an - 1];
+					f.bn = normals[bn - 1];
+					f.cn = normals[cn - 1];
+				}
+				if (dv != -1)
+				{
+					f.d = vertices[dv - 1];
+					f.dt = textures[dt - 1];
+					if (normals.size() > 0)
+						f.dn = normals[dn - 1];
+					f.type = 2;
+				}
+				f.texLocation = texLocation;
+				faces.push_back(f);
+			}
+		}
+	}
+	bool loadObject2(char* filename)
+	{
+		FILE *in = fopen(filename, "r");
+		if (!in)
+			return false;
+ 
+		char header[50];
+		int texLocation = -1;
+ 
+		while (fscanf(in, "%s", header) != EOF)
+		{
+			if (!strcmp(header, "v"))
+			{
+				Vertex pt;
+				fscanf(in, "%f%f%f", &pt.x, &pt.y, &pt.z);
+				vertices.push_back(pt);
+			}
+			if (!strcmp(header, "vt"))
+			{
+				Vertex pt;
+				fscanf(in, "%f%f%f", &pt.x, &pt.y, &pt.z);
+				textures.push_back(pt);
+			}
+			if (!strcmp(header, "vn"))
+			{
+				Vertex pt;
+				fscanf(in, "%f%f%f", &pt.x, &pt.y, &pt.z);
+				normals.push_back(pt);
+			}
+			if (!strcmp(header, "g"))
+			{
+				char name[30];
+				fscanf(in, "%s", name);
+				GLuint t = loadTextures(name);
+				tex.push_back(t);
+				texLocation++;
+ 
+			}
+			if (!strcmp(header, "f"))
+			{
+				face f;
+				int av = -1, bv = -1, cv = -1, dv = -1;
+				int at = -1, bt = -1, ct = -1, dt = -1;
+				int an = -1, bn = -1, cn = -1, dn = -1;
+ 
+				char fLine[100];
+				fgets(fLine, 99, in);
+				sscanf(fLine, " %d/%d/%d %d/%d/%d %d/%d/%d %d/%d/%d", &av, &at, &an, &bv, &bt,
+					&bn, &cv, &ct, &cn, &dv, &dt, &dn);
+				if (bv == -1)
+				{
+					sscanf(fLine, " %d/%d %d/%d %d/%d %d/%d", &av, &at, &bv, &bt,
+						&cv, &ct, &dv, &dt);
+					an = bn = cn = dn = 0;
+ 
+				}
+				f.a = vertices[av - 1];
+				f.b = vertices[bv - 1];
+				f.c = vertices[cv - 1];
+ 
+				f.at = textures[at - 1];
+				f.bt = textures[bt - 1];
+				f.ct = textures[ct - 1];
+				if (normals.size() > 0)
+				{
+					f.an = normals[an - 1];
+					f.bn = normals[bn - 1];
+					f.cn = normals[cn - 1];
+				}
+				if (dv != -1)
+				{
+					f.d = vertices[dv - 1];
+					f.dt = textures[dt - 1];
+					if (normals.size() > 0)
+						f.dn = normals[dn - 1];
+					f.type = 2;
+				}
+				f.texLocation = texLocation;
+				faces.push_back(f);
+			}
+		}
+	}
+};
+ 
+ 
+Object3D o2;
+Object3D o3;
+void reshape( int width, int height ) // *
+{
+	if(height == 0 )
+		height = 1;
+	float aspectRatio = width/height;
+ 
+	glMatrixMode( GL_PROJECTION );
+	glLoadIdentity();
+ 
+	glViewport(0,0,width,height);
+	gluPerspective(100, aspectRatio, 1, 8000);
+ 
+	glMatrixMode( GL_MODELVIEW );
+	glLoadIdentity();
+ 
+ 
+ 
+}
+Vertex calculateNormal(Vertex Vert1 ,Vertex Vert2, Vertex Vert3)
+{
+	GLfloat Ax, Ay, Az, Bx, By, Bz, x, y, z;
+	Ax = Vert1.x - Vert2.x;
+	Ay = Vert1.y - Vert2.y;
+	Az = Vert1.z - Vert2.z;
+	Bx = Vert1.x - Vert3.x;
+	By = Vert1.y - Vert3.y;
+	Bz = Vert1.z - Vert3.z; 
+ 
+	x = Ay*Bz - Az*By;
+	y = Bz*Ax - Bx*Az;
+	z = By*Ax - Bx*Ay;
+	Vertex fNormal(x, y, z);
+	return fNormal;
+ 
+}
+void renderHeightMap()
+{
+	int X=0, Y=0;
+	int x, y, z;
+	int a, b, c;
+	int d, e, f;
+	int g, h, i;
+	glBindTexture(GL_TEXTURE_2D, terrainTexture);
+	glBegin(GL_QUADS);
+	for(X = 0; X<mapWidth-stepSize; X+=stepSize)
+	{
+		for(Y = 0; Y<mapHeight-stepSize; Y+=stepSize)
+		{
+ 
+			x = X;
+			z = Y;
+			y = heightMap[X][Y];
+			Vertex A(x, y, z);
+ 
+			a = X;
+			c = Y + stepSize;
+			b = heightMap[X][Y + stepSize];
+			Vertex B(a, b, c);
+ 
+			d = X + stepSize;
+			f = Y + stepSize;
+			e = heightMap[X + stepSize][Y + stepSize];
+			Vertex C(d, e, f);
+ 
+			g = X + stepSize;
+			i = Y;
+			h = heightMap[X + stepSize][Y];
+			Vertex D(g, h, i);
+			Vertex currentNormal  =  calculateNormal(A, B, C);
+			Vertex Norm;
+			GLfloat Magnitude = sqrt((currentNormal.x*currentNormal.x) + (currentNormal.y*currentNormal.y) + (currentNormal.z*currentNormal.z));
+			Norm.x = currentNormal.x / Magnitude;
+			Norm.y = currentNormal.y / Magnitude;
+			Norm.z = currentNormal.z / Magnitude;
+			glNormal3f(Norm.x, Norm.y, -Norm.z);
+			glTexCoord2f(0, 0);
+			glVertex3f(x, y, z);
+ 
+			glNormal3f(Norm.x, Norm.y, -Norm.z);
+			glTexCoord2f(0, 1);
+			glVertex3f(a, b, c);
+ 
+			glNormal3f(Norm.x, Norm.y, -Norm.z);
+			glTexCoord2f(1, 1);
+			glVertex3f(d, e, f);
+ 
+			glNormal3f(Norm.x, Norm.y, -Norm.z);
+			glTexCoord2f(1, 0);
+			glVertex3f(g, h, i);
+		}
+	}
+	glEnd();
+}
+void render()
+{
+	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	glLoadIdentity();
+	gluLookAt(cameraX, cameraY, cameraZ,cameraX+headingX, cameraY, cameraZ+headingZ, 0, 1, 0);
+	drawSkybox(3000);
+	glPushMatrix();
+	glTranslatef(0, 0, 0);
+	glLightfv(GL_LIGHT1, GL_AMBIENT, ambientLight);
+	glLightfv(GL_LIGHT1, GL_DIFFUSE, diffuseLight);
+	glLightfv(GL_LIGHT1, GL_POSITION, lightPosition);
+	glPopMatrix();
+	glPushMatrix();
+	glScalef(0.5, 0.8, 0.5);
+	glPopMatrix();
+	renderHeightMap();
+	glPushMatrix();
+	glTranslatef(222+objMov.x, 50+objMov.y, 780+objMov.z);
+	glScalef(0.5, 0.5, 0.5);
+	o2.render();
+	glPopMatrix();
+	glPushMatrix();
+	glScalef(50, 50, 50);
+	o3.render();
+	glPopMatrix();
+	glutSwapBuffers();
+ 
+}
+ 
+void timerFunc( int time ) //*
+{
+	glutTimerFunc( 16, timerFunc, 16);
+	glutPostRedisplay();
+}
+ 
+void mySpecialFunc( int k, int x, int y ) //*
+{
+	if(k == GLUT_KEY_LEFT)
+	{
+		cameraAngle -= 0.1;
+		headingX = sin(cameraAngle);
+		headingZ = -cos(cameraAngle);
+	}
+	if(k == GLUT_KEY_RIGHT )
+	{
+		cameraAngle += 0.1;
+		headingX = sin(cameraAngle);
+		headingZ = -cos(cameraAngle);
+	}
+	if(k == GLUT_KEY_UP)
+	{
+		cameraZ += headingZ * 1.5;
+		cameraX += headingX * 1.5;
+		objMov.z += headingZ * 1.5;
+		objMov.x += headingX * 1.5;
+		glutPostRedisplay();
+	}
+	if(k == GLUT_KEY_DOWN)
+	{
+		cameraZ -= headingZ * 1.5;
+		cameraX -= headingX * 1.5; 
+		objMov.z -= headingZ * 1.5;
+		objMov.x -= headingX * 1.5;
+		glutPostRedisplay();
+	}
+	if(k == GLUT_KEY_PAGE_UP)
+	{
+		cameraY += 1;
+	}
+	if(k == GLUT_KEY_PAGE_DOWN)
+	{
+		cameraY -= 1;
+	}
+}
+int main( int argc, char* argv[] ) 
+{
+	glutInit(&argc, argv);
+	glutInitDisplayMode( GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH );
+	glutInitWindowPosition(100,100);
+	glutInitWindowSize(1280, 720);
+ 
+	glutCreateWindow("Window");
+ 
+	glutTimerFunc(16, timerFunc, 16);
+	glutDisplayFunc( render );
+	glutReshapeFunc( reshape );
+	glutSpecialFunc( mySpecialFunc );
+	glEnable(GL_LIGHT1);
+	glEnable(GL_LIGHTING);
+	glEnable( GL_DEPTH_TEST );
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_NORMALIZE);
+	glEnable(GL_SMOOTH);
+	o2.loadObject("D:\\apple.obj");
+	o3.loadObject2("D:\\LowTree.obj");
+	initSkyBox();
+	loadHeightMap( "D:\\heightmap.png" );
+	terrainTexture = loadTextures("D:\\GroundAsset.png");
+	glutMainLoop();
+ 
+ 
+	return 0;
+}
